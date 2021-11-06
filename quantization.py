@@ -88,7 +88,7 @@ def quantizeLayer(x, layer, stat, scale_x, zp_x):
   x = (layer(X)/ scale_next) + zero_point_next 
   
   # Perform relu too
-  x = F.relu(x)
+#  x = F.relu(x)
 
   # Reset weights for next forward pass
   layer.weight.data = W
@@ -119,21 +119,15 @@ def updateStats(x, stats, key):
 
 # Reworked Forward Pass to access activation Stats through updateStats function
 def gatherActivationStats(model, x, stats):
-
+    
   stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv1')
   x = model.act1(model.bn1((model.conv1(x))))
   x = model.pool1(x)
 
   stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv2')
   
-  #x = F.relu(model.conv2(x))
-
-  #x = F.max_pool2d(x, 2, 2)
-
   x = model.act2(model.bn2((model.conv2(x))))
   x = model.pool2(x)
-
-#  x = x.view(-1, 4*4*50)
 
   x = x.view(x.size(0), -1) 
   stats = updateStats(x, stats, 'lin1')
@@ -145,6 +139,8 @@ def gatherActivationStats(model, x, stats):
   x = model.lin2(x)
 
   return stats
+
+
 
 # Entry function to get stats of all functions.
 def gatherStats(model, test_loader):
@@ -174,14 +170,12 @@ def quantForward(model, x, stats):
 
   x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv1, stats['conv2'], x.scale, x.zero_point)
 
-  x = model.act1(model.bn1((model.conv1(x))))
+  x = model.act1(model.bn1(x))
   x = model.pool1(x)
 
-  print("1 done")
-  
   x, scale_next, zero_point_next = quantizeLayer(x, model.conv2, stats['lin1'], scale_next, zero_point_next)
 
-  x = model.act2(model.bn2((model.conv2(x))))
+  x = model.act2(model.bn2((x)))
   x = model.pool2(x)
 
   x = x.view(x.size(0), -1)
