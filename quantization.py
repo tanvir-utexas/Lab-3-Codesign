@@ -118,28 +118,31 @@ def updateStats(x, stats, key):
   return stats
 
 # Reworked Forward Pass to access activation Stats through updateStats function
-def gatherActivationStats(model, x, stats):
-    
-  stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv1')
-  x = model.act1(model.bn1((model.conv1(x))))
+def gatherActivationStats(model, x, stats):   
+  stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv1_before')
+  x = model.conv1(x)
+  stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv1_after')
+
+  x = model.act1(model.bn1(x))
   x = model.pool1(x)
 
-  stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv2')
-  
-  x = model.act2(model.bn2((model.conv2(x))))
+  stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv2_before')
+  x = model.conv2(x)
+  stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv2_after')
+
+  x = model.act2(model.bn2(x))
   x = model.pool2(x)
 
   x = x.view(x.size(0), -1) 
-  stats = updateStats(x, stats, 'lin1')
 
-  x = F.relu(model.lin1(x))
+  stats = updateStats(x, stats, 'lin1_before')
+  x = model.lin1(x)
   
-  stats = updateStats(x, stats, 'lin2')
+  stats = updateStats(x, stats, 'lin2_before')
 
   x = model.lin2(x)
 
   return stats
-
 
 
 # Entry function to get stats of all functions.
@@ -166,21 +169,26 @@ def gatherStats(model, test_loader):
 def quantForward(model, x, stats):
   
   # Quantise before inputting into incoming layers
-  x = quantize_tensor(x, min_val=stats['conv1']['min'], max_val=stats['conv1']['max'])
+  print("Before:", x)
+  x = quantize_tensor(x, min_val=stats['conv1_before']['min'], max_val=stats['conv1_before']['max'])
+  print("After:", x)
 
-  x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv1, stats['conv2'], x.scale, x.zero_point)
+  x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv1, stats['conv1_after'], x.scale, x.zero_point)
 
   x = model.act1(model.bn1(x))
   x = model.pool1(x)
-
-  x, scale_next, zero_point_next = quantizeLayer(x, model.conv2, stats['lin1'], scale_next, zero_point_next)
+  
+  x = quantize_tensor(x, min_val=stats['conv2_before']['min'], max_val=stats['conv2_before']['max'])
+  x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv2, stats['conv2_after'], x.scale, x.zero_point)
 
   x = model.act2(model.bn2((x)))
   x = model.pool2(x)
 
   x = x.view(x.size(0), -1)
 
-  x, scale_next, zero_point_next = quantizeLayer(x, model.lin1, stats['lin2'], scale_next, zero_point_next)
+  x = quantize_tensor(x, min_val=stats['lin1_before']['min'], max_val=stats['lin1_before']['max'])
+
+  x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.lin1, stats['lin2_before'], x.scale, x.zero_point)
   
   # Back to dequant for final layer
   x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
@@ -189,10 +197,26 @@ def quantForward(model, x, stats):
 
   return x
 
+def NoQuantforward(model, x):
+    print('Before FP:',x)
+    c1 = model.conv1(x)
+    print("After FP:", x)
+    b1 = model.bn1(c1)
+    a1 = model.act1(b1)
+    p1 = model.pool1(a1)
+    c2 = model.conv2(p1)
+    b2 = model.bn2(c2)
+    a2 = model.act2(b2)
+    p2 = model.pool2(a2)
+    flt = p2.view(p2.size(0), -1)
+    l1 = model.lin1(flt)
+    out = model.lin2(l1)
+    return out
+
 
 def testQuant(model, test_loader, quant=False, stats=None):
     device = 'cuda'
-    
+       
     model.eval()
     test_loss = 0
     correct = 0
@@ -202,7 +226,8 @@ def testQuant(model, test_loader, quant=False, stats=None):
             if quant:
               pred = quantForward(model, data, stats)
             else:
-              pred = model(data)
+              pred = NoQuantforward(model, data)
+              break
 
             test_loss += loss_fn(pred, target).item()
             correct += (pred.argmax(1) == target).type(torch.float).sum().item()
