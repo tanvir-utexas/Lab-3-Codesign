@@ -82,13 +82,11 @@ def quantizeLayer(x, layer, stat, scale_x, zp_x):
   # Preparing input by shifting
   X = x.float() - zp_x
   layer.weight.data = scale_x * scale_w*(layer.weight.data - zp_w)
-  layer.bias.data = scale_b*(layer.bias.data + zp_b)
+  # Jeff: Here should be minus zero point
+  layer.bias.data = scale_b*(layer.bias.data - zp_b)
 
   # All int computation
-  x = (layer(X)/ scale_next) + zero_point_next 
-  
-  # Perform relu too
-#  x = F.relu(x)
+  x = (layer(X)/ scale_next) + zero_point_next
 
   # Reset weights for next forward pass
   layer.weight.data = W
@@ -104,17 +102,16 @@ and getting the average min and max activation values before and after each laye
 
 # Get Min and max of x tensor, and stores it
 def updateStats(x, stats, key):
-  max_val, _ = torch.max(x, dim=1)
-  min_val, _ = torch.min(x, dim=1)
-  
-  
+  max_val = torch.max(x)
+  min_val = torch.min(x)
+
   if key not in stats:
-    stats[key] = {"max": max_val.sum(), "min": min_val.sum(), "total": 1}
+      stats[key] = {"max": max_val.sum(), "min": min_val.sum(), "total": 1}
   else:
-    stats[key]['max'] += max_val.sum().item()
-    stats[key]['min'] += min_val.sum().item()
-    stats[key]['total'] += 1
-  
+      stats[key]['max'] += max_val.sum().item()
+      stats[key]['min'] += min_val.sum().item()
+      stats[key]['total'] += 1
+
   return stats
 
 # Reworked Forward Pass to access activation Stats through updateStats function
@@ -169,17 +166,19 @@ def gatherStats(model, test_loader):
 def quantForward(model, x, stats):
   
   # Quantise before inputting into incoming layers
-  print("Before:", x)
   x = quantize_tensor(x, min_val=stats['conv1_before']['min'], max_val=stats['conv1_before']['max'])
-  print("After:", x)
 
   x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv1, stats['conv1_after'], x.scale, x.zero_point)
+  # Jeff: Because the input of bn should be FP, we need to convert x to FP
+  x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
 
   x = model.act1(model.bn1(x))
   x = model.pool1(x)
   
   x = quantize_tensor(x, min_val=stats['conv2_before']['min'], max_val=stats['conv2_before']['max'])
   x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv2, stats['conv2_after'], x.scale, x.zero_point)
+  # Jeff: Because the input of bn should be FP, we need to convert x to FP
+  x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
 
   x = model.act2(model.bn2((x)))
   x = model.pool2(x)
@@ -198,9 +197,7 @@ def quantForward(model, x, stats):
   return x
 
 def NoQuantforward(model, x):
-    print('Before FP:',x)
     c1 = model.conv1(x)
-    print("After FP:", x)
     b1 = model.bn1(c1)
     a1 = model.act1(b1)
     p1 = model.pool1(a1)
@@ -227,7 +224,6 @@ def testQuant(model, test_loader, quant=False, stats=None):
               pred = quantForward(model, data, stats)
             else:
               pred = NoQuantforward(model, data)
-              break
 
             test_loss += loss_fn(pred, target).item()
             correct += (pred.argmax(1) == target).type(torch.float).sum().item()
