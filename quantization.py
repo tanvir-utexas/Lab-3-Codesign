@@ -224,11 +224,7 @@ def testQuant(model, test_loader, quant=False, stats=None):
               pred = quantForward(model, data, stats)
             else:
               pred = NoQuantforward(model, data)
-<<<<<<< HEAD
-              
-=======
 
->>>>>>> 28c6f232a654cb8390961db085b1054cb413e5a6
             test_loss += loss_fn(pred, target).item()
             correct += (pred.argmax(1) == target).type(torch.float).sum().item()
     test_loss /= len(test_loader.dataset)
@@ -267,4 +263,4 @@ stats = gatherStats(q_model, test_dataloader)
 print(stats)
 
 #test on quantized model
-#testQuant(q_model, test_dataloader, quant=True, stats=stats)
+testQuant(q_model, test_dataloader, quant=True, stats=stats)
