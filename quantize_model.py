@@ -1,5 +1,3 @@
-#Quantisation Functions
-
 from collections import namedtuple
 import torch
 import torch.nn as nn
@@ -10,7 +8,7 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor, Lambda, Compose
 import matplotlib.pyplot as plt
 from Network import MyConvNet 
-
+from matplotlib import pyplot as plt
 
 QTensor = namedtuple('QTensor', ['tensor', 'scale', 'zero_point'])
 
@@ -52,11 +50,11 @@ def quantize_tensor(x, num_bits=8, min_val=None, max_val=None):
 
 def dequantize_tensor(q_x):
     return q_x.scale * (q_x.tensor.float() - q_x.zero_point)
-
+    
 
 #Rework Forward pass of Linear and Conv Layers to support Quantisation
 
-def quantizeLayer(x, layer, stat, scale_x, zp_x):
+def quantizeLayer(x, layer, stat, scale_x, zp_x, num_bits = 8):
   # for both conv and linear layers
 
   # cache old values
@@ -64,8 +62,8 @@ def quantizeLayer(x, layer, stat, scale_x, zp_x):
   B = layer.bias.data
 
   # quantise weights, activations are already quantised
-  w = quantize_tensor(layer.weight.data) 
-  b = quantize_tensor(layer.bias.data)
+  w = quantize_tensor(layer.weight.data, num_bits= num_bits) 
+  b = quantize_tensor(layer.bias.data, num_bits= num_bits)
 
   layer.weight.data = w.tensor.float()
   layer.bias.data = b.tensor.float()
@@ -76,7 +74,7 @@ def quantizeLayer(x, layer, stat, scale_x, zp_x):
   scale_b = b.scale
   zp_b = b.zero_point
   
-  scale_next, zero_point_next = calcScaleZeroPoint(min_val=stat['min'], max_val=stat['max'])
+  scale_next, zero_point_next = calcScaleZeroPoint(min_val=stat['min'], max_val=stat['max'], num_bits= num_bits)
 
   # Preparing input by shifting
   X = x.float() - zp_x
@@ -162,20 +160,20 @@ def gatherStats(model, test_loader):
 
 # Forward Pass for Quantised Inference
 
-def quantForward(model, x, stats):
+def quantForward(model, x, stats, num_bits = 8):
   
   # Quantise before inputting into incoming layers
-  x = quantize_tensor(x, min_val=stats['conv1_before']['min'], max_val=stats['conv1_before']['max'])
+  x = quantize_tensor(x, min_val=stats['conv1_before']['min'], max_val=stats['conv1_before']['max'], num_bits = num_bits)
 
-  x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv1, stats['conv1_after'], x.scale, x.zero_point)
+  x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv1, stats['conv1_after'], x.scale, x.zero_point, num_bits = num_bits)
   # Jeff: Because the input of bn should be FP, we need to convert x to FP
   x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
 
   x = model.act1(model.bn1(x))
   x = model.pool1(x)
   
-  x = quantize_tensor(x, min_val=stats['conv2_before']['min'], max_val=stats['conv2_before']['max'])
-  x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv2, stats['conv2_after'], x.scale, x.zero_point)
+  x = quantize_tensor(x, min_val=stats['conv2_before']['min'], max_val=stats['conv2_before']['max'], num_bits = num_bits)
+  x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv2, stats['conv2_after'], x.scale, x.zero_point, num_bits = num_bits)
   # Jeff: Because the input of bn should be FP, we need to convert x to FP
   x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
 
@@ -184,9 +182,9 @@ def quantForward(model, x, stats):
 
   x = x.view(x.size(0), -1)
 
-  x = quantize_tensor(x, min_val=stats['lin1_before']['min'], max_val=stats['lin1_before']['max'])
+  x = quantize_tensor(x, min_val=stats['lin1_before']['min'], max_val=stats['lin1_before']['max'], num_bits = num_bits)
 
-  x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.lin1, stats['lin2_before'], x.scale, x.zero_point)
+  x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.lin1, stats['lin2_before'], x.scale, x.zero_point, num_bits = num_bits)
   
   # Back to dequant for final layer
   x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
@@ -210,17 +208,19 @@ def NoQuantforward(model, x):
     return out
 
 
-def testQuant(model, test_loader, quant=False, stats=None):
+def testQuant(model, test_loader, quant=False, stats=None, num_bits = 8):
     device = 'cuda'
        
     model.eval()
     test_loss = 0
     correct = 0
+    loss_fn = nn.CrossEntropyLoss()
+
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             if quant:
-              pred = quantForward(model, data, stats)
+              pred = quantForward(model, data, stats, num_bits = num_bits)
             else:
               pred = NoQuantforward(model, data)
 
@@ -228,39 +228,78 @@ def testQuant(model, test_loader, quant=False, stats=None):
             correct += (pred.argmax(1) == target).type(torch.float).sum().item()
     test_loss /= len(test_loader.dataset)
 
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
+    test_acc = 100. * correct / len(test_loader.dataset)
+    # print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+    #     test_loss, correct, len(test_loader.dataset),
+    #     100. * correct / len(test_loader.dataset)))
+    
+    return test_loss, test_acc
+
+def quantize_model(model, num_bits):
+    # Download test data from open datasets.
+    test_data = datasets.FashionMNIST(
+        root="data",
+        train=False,
+        download=True,
+        transform=ToTensor(),
+    )
+
+    batch_size = 64
+    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+    
+    stats = gatherStats(model, test_dataloader)
+    
+    print("Evaluating No quantization performance")
+    test_loss, test_accuracy = testQuant(model, test_dataloader, quant=False, stats=stats, num_bits = num_bits)    
+    print('\nTest set: Average loss: {:.4f}, Accuracy: ({:.2f}%)\n'.format(
+        test_loss, test_accuracy)) 
+    
+    
+    print("Evaluating quantization performance")
+    test_loss, test_accuracy = testQuant(model, test_dataloader, quant=True, stats=stats, num_bits = num_bits)
+    print('\nTest set: Average loss: {:.4f}, Accuracy:({:.2f}%)\n'.format(
+        test_loss, test_accuracy))    
 
 
+def plot_test_accuracy(model, min_bits = 8, max_bits = 16):
+    test_data = datasets.FashionMNIST(
+        root="data",
+        train=False,
+        download=True,
+        transform=ToTensor(),
+    )
+    batch_size = 64
+    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+    
+    stats = gatherStats(model, test_dataloader)
+    
+    test_accuracy = []
+    
+    for bits in range(min_bits, max_bits+1):
+      _, accuracy = testQuant(model, test_dataloader, quant=True, stats=stats, num_bits = bits)
+      test_accuracy.append(accuracy) 
+    
+    plt.style.use('fivethirtyeight')
 
-##starting the process
+    plt.plot(range(min_bits, max_bits+1), test_accuracy)
+    plt.xlabel('number of bits (num_bits)')
+    plt.ylabel('Test Accuracy')
+    plt.title('Effect of Quantization on FashionMNIST')
 
-#if "__name__" == "__main__":
-device = "cuda" if torch.cuda.is_available() else "cpu"
-print("Using {} device".format(device))
+    plt.legend()
 
-# Download test data from open datasets.
-test_data = datasets.FashionMNIST(
-    root="data",
-    train=False,
-    download=True,
-    transform=ToTensor(),
-)
+    plt.tight_layout()
 
-batch_size = 64
-test_dataloader = DataLoader(test_data, batch_size=batch_size)
+    plt.savefig('simple_quantization.png')
 
-q_model = torch.load('model.pth').to(device)
-loss_fn = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(q_model.parameters(), lr=1e-3)
+    plt.show()
 
 
-#Test on non-quantized model
-testQuant(q_model, test_dataloader, quant=False)
+if __name__ == "__main__":
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print("Using {} device".format(device))
 
-stats = gatherStats(q_model, test_dataloader)
-print(stats)
+    model = torch.load('model.pth').to(device)
+    quantize_model(model, num_bits = 16)
 
-  #test on quantized model
-  testQuant(q_model, test_dataloader, quant=True, stats=stats)
+    plot_test_accuracy(model, min_bits = 1, max_bits = 16)
