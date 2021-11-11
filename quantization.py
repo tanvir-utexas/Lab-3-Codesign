@@ -165,8 +165,6 @@ def gatherStats(model, test_loader):
 def quantForward(model, x, stats, quant_num_bits):
   
   # Quantise before inputting into incoming layers
-  # import ipdb
-  # ipdb.set_trace()
   x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['conv1_before']['min'],
                       max_val=stats['conv1_before']['max'])
 
@@ -256,8 +254,9 @@ test_data = datasets.FashionMNIST(
 
 batch_size = 64
 test_dataloader = DataLoader(test_data, batch_size=batch_size)
-
-q_model = torch.load('model.pth').to(device)
+model_path = 'model_lr_0.05_bs_16_acc91.7.pth'
+q_model = torch.load(model_path).to(device)
+print("Loading model from {}".format(model_path))
 loss_fn = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(q_model.parameters(), lr=1e-3)
 

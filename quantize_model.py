@@ -44,7 +44,7 @@ def quantize_tensor(x, num_bits=8, min_val=None, max_val=None):
     scale, zero_point = calcScaleZeroPoint(min_val, max_val, num_bits)
     q_x = zero_point + x / scale
     q_x.clamp_(qmin, qmax).round_()
-    q_x = q_x.round().byte()
+    q_x = q_x.round()
     
     return QTensor(tensor=q_x, scale=scale, zero_point=zero_point)
 
@@ -299,7 +299,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Using {} device".format(device))
 
-    model = torch.load('model.pth').to(device)
+    model = torch.load('model_lr_0.05_bs_16_acc91.7.pth').to(device)
     quantize_model(model, num_bits = 16)
 
     plot_test_accuracy(model, min_bits = 1, max_bits = 16)
