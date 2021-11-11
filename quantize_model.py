@@ -136,6 +136,8 @@ def gatherActivationStats(model, x, stats):
 
   x = model.lin2(x)
 
+  stats = updateStats(x, stats, 'lin2_after')
+
   return stats
 
 
@@ -185,11 +187,9 @@ def quantForward(model, x, stats, num_bits = 8):
   x = quantize_tensor(x, min_val=stats['lin1_before']['min'], max_val=stats['lin1_before']['max'], num_bits = num_bits)
 
   x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.lin1, stats['lin2_before'], x.scale, x.zero_point, num_bits = num_bits)
-  
-  # Back to dequant for final layer
-  x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
-   
-  x = model.lin2(x)
+
+  x, scale_next, zero_point_next = quantizeLayer(x, model.lin2, stats['lin2_after'], scale_next, zero_point_next, num_bits = num_bits)
+
 
   return x
 
