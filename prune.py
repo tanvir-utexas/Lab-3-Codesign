@@ -43,10 +43,11 @@ def test(dataloader, model, loss_fn, device):
 test_dataloader = DataLoader(test_data, batch_size=16)
 loss_fn = nn.CrossEntropyLoss()
 
+#.................................................................................................#
 
 #Starting filter pruning
 
-filter_pruning_amounts = torch.linspace(0, 1, 10)
+filter_pruning_amounts = torch.range(0.1, 1, 0.1)
 
 test_accuracy_filter_pruning = []
 
@@ -55,17 +56,58 @@ for amount in filter_pruning_amounts:
 
     for name, module in model.named_modules():
         if isinstance(module, torch.nn.Conv2d):
-            prune.ln_structured(module, name="weight", amount=0.5, n=1, dim=0)
+            prune.ln_structured(module, name="weight", amount=amount.data.item(), n=1, dim=0)
             prune.remove(module, 'weight')
 
     test_acc = test(test_dataloader,model, loss_fn, device)
     test_accuracy_filter_pruning.append(test_acc)
-    
 
 
+plt.style.use('fivethirtyeight')
+plt.plot(filter_pruning_amounts, test_accuracy_filter_pruning)
+plt.xlabel('Ratios of Filter Pruning')
+plt.ylabel('Test Accuracy')
+plt.title('Effect of Filter Pruning on FashionMNIST')
+
+plt.legend()
+
+plt.tight_layout()
+
+plt.savefig('filter_pruning.png')
+
+plt.show()
 
 
+#.................................................................................................................#
+#Starting channel pruning
 
-test_accuracy = test(test_dataloader, model, loss_fn, device)
+channel_pruning_amounts = torch.range(0.1, 1, 0.1)
 
-print(test_accuracy)
+test_accuracy_channel_pruning = []
+
+for amount in channel_pruning_amounts:
+    model = torch.load('/home/tmahmud/Co-Design Tasks/Lab3_renew/Lab-3-Codesign/model_lr_0.05_bs_16_acc91.7.pth')
+
+    for name, module in model.named_modules():
+        if isinstance(module, torch.nn.Conv2d):
+            prune.ln_structured(module, name="weight", amount=amount.data.item(), n=1, dim=1)
+            prune.remove(module, 'weight')
+
+    print("Channel Pruning amount: {}".format(amount))
+    test_acc = test(test_dataloader,model, loss_fn, device)
+    test_accuracy_channel_pruning.append(test_acc)
+
+
+plt.style.use('fivethirtyeight')
+plt.plot(channel_pruning_amounts, test_accuracy_channel_pruning)
+plt.xlabel('Ratios of Channel Pruning')
+plt.ylabel('Test Accuracy')
+plt.title('Effect of Channel Pruning on FashionMNIST')
+
+plt.legend()
+
+plt.tight_layout()
+
+plt.savefig('channel_pruning.png')
+
+plt.show()
