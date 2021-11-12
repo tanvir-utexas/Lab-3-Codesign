@@ -1,0 +1,66 @@
+import numpy as np
+import matplotlib.pyplot as plt
+
+fp_w_conv1 = np.load('./weights_npy/fp_w_conv1.npy').flatten()
+fp_w_conv2 = np.load('./weights_npy/fp_w_conv2.npy').flatten()
+fp_w_lin1 = np.load('./weights_npy/fp_w_lin1.npy').flatten()
+fp_w_lin2 = np.load('./weights_npy/fp_w_lin2.npy').flatten()
+quant_w_conv1 = np.load('./weights_npy/quant_w_conv1.npy').flatten()
+quant_w_conv2 = np.load('./weights_npy/quant_w_conv2.npy').flatten()
+quant_w_lin1 = np.load('./weights_npy/quant_w_lin1.npy').flatten()
+quant_w_lin2 = np.load('./weights_npy/quant_w_lin2.npy').flatten()
+
+# plt.subplot(221)
+# plt.hist(fp_w_conv1, bins=100, label='fp_w_conv1')
+# plt.xlabel('Value')
+# plt.ylabel('Sample Number')
+# plt.legend(loc='best')
+# plt.subplot(222)
+# plt.hist(quant_w_conv1, bins=100, label='quant_w_conv1')
+# plt.xlabel('Value')
+# plt.ylabel('Sample Number')
+# plt.legend(loc='best')
+#
+# plt.subplot(223)
+# plt.hist(fp_w_conv2, bins=100, label='fp_w_conv2')
+# plt.xlabel('Value')
+# plt.ylabel('Sample Number')
+# plt.legend(loc='best')
+# plt.subplot(224)
+# plt.hist(quant_w_conv2, bins=100, label='quant_w_conv2')
+# plt.xlabel('Value')
+# plt.ylabel('Sample Number')
+# plt.legend(loc='best')
+
+plt.subplot(221)
+plt.hist(fp_w_lin1, bins=100, label='fp_w_lin1')
+plt.xlabel('Value')
+plt.ylabel('Sample Number')
+plt.legend(loc='best')
+plt.subplot(222)
+plt.hist(quant_w_lin1, bins=100, label='quant_w_lin1')
+plt.xlabel('Value')
+plt.ylabel('Sample Number')
+plt.legend(loc='best')
+
+plt.subplot(223)
+plt.hist(fp_w_lin2, bins=100, label='fp_w_lin2')
+plt.xlabel('Value')
+plt.ylabel('Sample Number')
+plt.legend(loc='best')
+plt.subplot(224)
+plt.hist(quant_w_lin2, bins=100, label='quant_w_lin2')
+plt.xlabel('Value')
+plt.ylabel('Sample Number')
+plt.legend(loc='best')
+
+
+
+plt.show()
+
+
+# plt.subplot(122)
+# plt.hist(conv2_1_weight, histtype='step', linewidth=2, label='conv2_1')
+# plt.hist(conv2_2_weight, histtype='step', linewidth=2, label='conv2_2')
+# plt.hist(conv2_3_weight, histtype='step', linewidth=2, label='conv2_3')
+# plt.hist(conv2_4_weight, histtype='step', linewidth=2, label='conv2_4')

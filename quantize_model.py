@@ -44,7 +44,7 @@ def quantize_tensor(x, num_bits=8, min_val=None, max_val=None):
     scale, zero_point = calcScaleZeroPoint(min_val, max_val, num_bits)
     q_x = zero_point + x / scale
     q_x.clamp_(qmin, qmax).round_()
-    q_x = q_x.round().byte()
+    q_x = q_x.round()
     
     return QTensor(tensor=q_x, scale=scale, zero_point=zero_point)
 
@@ -136,6 +136,8 @@ def gatherActivationStats(model, x, stats):
 
   x = model.lin2(x)
 
+  stats = updateStats(x, stats, 'lin2_after')
+
   return stats
 
 
@@ -185,11 +187,9 @@ def quantForward(model, x, stats, num_bits = 8):
   x = quantize_tensor(x, min_val=stats['lin1_before']['min'], max_val=stats['lin1_before']['max'], num_bits = num_bits)
 
   x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.lin1, stats['lin2_before'], x.scale, x.zero_point, num_bits = num_bits)
-  
-  # Back to dequant for final layer
-  x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
-   
-  x = model.lin2(x)
+
+  x, scale_next, zero_point_next = quantizeLayer(x, model.lin2, stats['lin2_after'], scale_next, zero_point_next, num_bits = num_bits)
+
 
   return x
 
@@ -299,7 +299,7 @@ if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print("Using {} device".format(device))
 
-    model = torch.load('model.pth').to(device)
+    model = torch.load('model_lr_0.05_bs_16_acc91.7.pth').to(device)
     quantize_model(model, num_bits = 16)
 
     plot_test_accuracy(model, min_bits = 1, max_bits = 16)

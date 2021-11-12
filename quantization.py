@@ -1,6 +1,7 @@
 #Quantisation Functions
 
 from collections import namedtuple
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -56,7 +57,7 @@ def dequantize_tensor(q_x):
 
 #Rework Forward pass of Linear and Conv Layers to support Quantisation
 
-def quantizeLayer(x, layer, stat, scale_x, zp_x, num_bits=8):
+def quantizeLayer(x, layer, stat, scale_x, zp_x, num_bits=8, weights_save_name=None):
   # for both conv and linear layers
 
   # cache old values
@@ -66,6 +67,11 @@ def quantizeLayer(x, layer, stat, scale_x, zp_x, num_bits=8):
   # quantise weights, activations are already quantised
   w = quantize_tensor(layer.weight.data, num_bits=num_bits)
   b = quantize_tensor(layer.bias.data, num_bits=num_bits)
+
+  if weights_save_name:
+      np.save(f'./weights_npy/fp_w_{weights_save_name}', W.cpu().numpy())
+      qt_w = w.scale*(w.tensor - w.zero_point)
+      np.save(f'./weights_npy/quant_w_{weights_save_name}', qt_w.cpu().numpy())
 
   layer.weight.data = w.tensor.float()
   layer.bias.data = b.tensor.float()
@@ -138,6 +144,7 @@ def gatherActivationStats(model, x, stats):
 
   x = model.lin2(x)
 
+  stats = updateStats(x, stats, 'lin2_after')
   return stats
 
 
@@ -165,13 +172,12 @@ def gatherStats(model, test_loader):
 def quantForward(model, x, stats, quant_num_bits):
   
   # Quantise before inputting into incoming layers
-  # import ipdb
-  # ipdb.set_trace()
   x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['conv1_before']['min'],
                       max_val=stats['conv1_before']['max'])
 
   x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv1, stats['conv1_after'],
-                                                 x.scale, x.zero_point, num_bits=quant_num_bits)
+                                                 x.scale, x.zero_point, num_bits=quant_num_bits,
+                                                 weights_save_name='conv1')
   # Jeff: Because the input of bn should be FP, we need to convert x to FP
   x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
 
@@ -180,7 +186,8 @@ def quantForward(model, x, stats, quant_num_bits):
   
   x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['conv2_before']['min'], max_val=stats['conv2_before']['max'])
   x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv2, stats['conv2_after'],
-                                                 x.scale, x.zero_point, num_bits=quant_num_bits)
+                                                 x.scale, x.zero_point, num_bits=quant_num_bits,
+                                                 weights_save_name='conv2')
   # Jeff: Because the input of bn should be FP, we need to convert x to FP
   x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
 
@@ -192,12 +199,13 @@ def quantForward(model, x, stats, quant_num_bits):
   x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['lin1_before']['min'], max_val=stats['lin1_before']['max'])
 
   x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.lin1, stats['lin2_before'],
-                                                 x.scale, x.zero_point, num_bits=quant_num_bits)
-  
-  # Back to dequant for final layer
+                                                 x.scale, x.zero_point, num_bits=quant_num_bits,
+                                                 weights_save_name='lin1')
+
+  x, scale_next, zero_point_next = quantizeLayer(x, model.lin2, stats['lin2_after'], scale_next, zero_point_next,
+                                                 num_bits=quant_num_bits, weights_save_name='lin2')
+
   x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
-   
-  x = model.lin2(x)
 
   return x
 
@@ -256,8 +264,9 @@ test_data = datasets.FashionMNIST(
 
 batch_size = 64
 test_dataloader = DataLoader(test_data, batch_size=batch_size)
-
-q_model = torch.load('model.pth').to(device)
+model_path = 'model_lr_0.05_bs_16_acc91.7.pth'
+q_model = torch.load(model_path).to(device)
+print("Loading model from {}".format(model_path))
 loss_fn = nn.CrossEntropyLoss()
 optimizer = torch.optim.SGD(q_model.parameters(), lr=1e-3)
 
@@ -269,5 +278,5 @@ stats = gatherStats(q_model, test_dataloader)
 print(stats)
 
 #test on quantized model
-quant_num_bits = 16
+quant_num_bits = 4
 testQuant(q_model, test_dataloader, quant=True, stats=stats, quant_num_bits=quant_num_bits)
