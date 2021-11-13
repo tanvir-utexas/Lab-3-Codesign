@@ -84,6 +84,7 @@ print(total_zeros, total_elements)
 
 print("Sparsity for filter Pruning: {} %".format(100 * (total_zeros/total_elements)))
 
+
 #.................................................................................................................#
 #Starting channel pruning
 
