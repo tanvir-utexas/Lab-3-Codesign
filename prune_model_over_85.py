@@ -45,7 +45,7 @@ loss_fn = nn.CrossEntropyLoss()
 
 #.................................................................................................#
 
-#Starting filter pruning
+# #Starting filter pruning
 
 model = torch.load('/home/tmahmud/Co-Design Tasks/Lab3_renew/Lab-3-Codesign/model_lr_0.05_bs_16_acc91.7.pth')
 
@@ -70,6 +70,20 @@ print("Printing Summary of the Filter Pruned Model")
 print("..................................")
 summary(model, input_size=(1, 28, 28))
 
+#Sparsity calculation
+total_zeros = 0
+total_elements = 0
+
+for name, param in model.named_parameters():
+    if name in ['conv1.weight', 'conv2.weight']:
+        total_zeros += torch.sum(param.data == 0)
+    
+    total_elements += torch.numel(param)
+
+print(total_zeros, total_elements)
+
+print("Sparsity for filter Pruning: {} %".format(100 * (total_zeros/total_elements)))
+
 #.................................................................................................................#
 #Starting channel pruning
 
@@ -88,7 +102,21 @@ test_acc = test(test_dataloader,model, loss_fn, device)
 print("Test accuracy: {} with filter pruning amount:{}".format(test_acc,amount))
 torch.save(model, "channel_pruned_factor_0.5.pth")
 
-print("Printing Summary of the Filter Pruned Model")
+print("Printing Summary of the Channel Pruned Model")
 print("..................................")
 summary(model, input_size=(1, 28, 28))
 
+
+#Sparsity calculation
+total_zeros = 0
+total_elements = 0
+
+for name, param in model.named_parameters():
+    if name in ['conv1.weight', 'conv2.weight']:
+        total_zeros += torch.sum(param.data == 0)
+    
+    total_elements += torch.numel(param)
+
+print(total_zeros, total_elements)
+
+print("Sparsity for Channel Pruning: {} %".format(100 * (total_zeros/total_elements)))
