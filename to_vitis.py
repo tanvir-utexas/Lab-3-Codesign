@@ -13,6 +13,8 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor, Lambda, Compose
 import matplotlib.pyplot as plt
 from Network import MyConvNet
+import pandas as pd
+
 QTensor = namedtuple('QTensor', ['tensor', 'scale', 'zero_point'])
 
 
@@ -369,6 +371,19 @@ print(fused_model.graph)
 testQuant(fused_model, test_dataloader, quant=False)
 
 
+ls = ['conv1.weight', 'conv1.bias', 'conv2.weight', 'conv2.bias', 'lin1.weight', 'lin1.bias', 'lin2.weight', 'lin2.bias']
 
 for name, layer in q_model.named_parameters():
-    print(name, layer.data.size())
+    if name in ls:
+#        print(name, layer.data.cpu().detach().numpy().shape)
+        layer = layer.data.cpu().detach().numpy()
+        np.save(f"/home/tmahmud/Co-Design Tasks/Lab3_renew/Lab-3-Codesign/Pruned_weights/{name}.npy", layer)
+
+
+##trying to convert to csv
+# for name, layer in q_model.named_parameters():
+#     if name in ls:
+# #        print(name, layer.data.cpu().detach().numpy().shape)
+#         layer = layer.data.cpu().detach().numpy()
+#         df = pd.DataFrame(layer)
+#         df.to_csv(f"/home/tmahmud/Co-Design Tasks/Lab3_renew/Lab-3-Codesign/Pruned_weights/{name}.csv")
