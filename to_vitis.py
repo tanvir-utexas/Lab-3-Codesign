@@ -339,6 +339,62 @@ def fuse(model: torch.nn.Module) -> torch.nn.Module:
     fx_model.recompile()
     return fx_model
 
+def csv_conv_tensor(tensor, path='', name = ''):
+    """
+    Function to convert conv tensor data to 2D CSV file
+      
+    Input tensor shape: (out, in, k, k)
+
+    Store CSV: (k * k * in * out)
+
+    """
+    array = (tensor.data.cpu().detach().numpy())
+    
+    array = array.reshape(array.shape[0], array.shape[1], -1) # (out, in, k, k) -> (out, in, k * k)
+
+    final = []
+    
+    for i in range(len(array)):
+        temp = [] # HOLDS [ k * k * in]
+        
+        for j in range(len(array[i])):
+            temp.append(list(array[i][j]))
+        
+        temp = np.concatenate(temp)
+        temp = list(temp)
+        
+        final.append(temp)
+    
+    final = np.concatenate(final)
+    df = pd.DataFrame(final)
+    df.to_csv(path + f"{name}.csv", index = False)
+
+
+def csv_lin_tensor(tensor, path='', name = ''):
+    """
+    Function to convert conv tensor data to 2D CSV file
+      
+    Input tensor shape: (out, in)
+
+    Store CSV: (in * out)
+
+    """
+    array = (tensor.data.cpu().detach().numpy())
+    
+    array = array.reshape(array.shape[0], array.shape[1], -1) # (out, in, k, k) -> (out, in, k * k)
+
+    final = []
+    
+    for i in range(len(array)):    
+        final.append(list(array[i]))
+    
+    final = np.concatenate(final)
+
+    df = pd.DataFrame(final)
+    
+    df.to_csv(path + f"{name}.csv", index = False)
+
+
 ##starting the process
 
 # if "__name__" == "__main__":
@@ -371,19 +427,16 @@ print(fused_model.graph)
 testQuant(fused_model, test_dataloader, quant=False)
 
 
-ls = ['conv1.weight', 'conv1.bias', 'conv2.weight', 'conv2.bias', 'lin1.weight', 'lin1.bias', 'lin2.weight', 'lin2.bias']
+conv_list = ['conv1.weight', 'conv2.weight']
+
+lin_list = ['lin1.weight', 'lin2.weight']
+
+
+path = "/home/tmahmud/Co-Design Tasks/Lab3_renew/Lab-3-Codesign/pruned_weights/"
 
 for name, layer in q_model.named_parameters():
-    if name in ls:
-#        print(name, layer.data.cpu().detach().numpy().shape)
-        layer = layer.data.cpu().detach().numpy()
-        np.save(f"/home/tmahmud/Co-Design Tasks/Lab3_renew/Lab-3-Codesign/Pruned_weights/{name}.npy", layer)
-
-
-##trying to convert to csv
-# for name, layer in q_model.named_parameters():
-#     if name in ls:
-# #        print(name, layer.data.cpu().detach().numpy().shape)
-#         layer = layer.data.cpu().detach().numpy()
-#         df = pd.DataFrame(layer)
-#         df.to_csv(f"/home/tmahmud/Co-Design Tasks/Lab3_renew/Lab-3-Codesign/Pruned_weights/{name}.csv")
+    print(name, layer.shape)
+    if name in conv_list:
+        csv_conv_tensor(layer, path, name)
+    elif name in lin_list:
+        csv_lin_tensor(layer, path, name)
