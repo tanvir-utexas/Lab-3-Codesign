@@ -1,4 +1,5 @@
 # Quantisation Functions
+import pprint
 from typing import Type, Dict, Any, Tuple, Iterable
 import copy
 from collections import namedtuple
@@ -70,12 +71,23 @@ def quantizeLayer(x, layer, stat, scale_x, zp_x, num_bits=8, weights_save_name=N
 
     # quantise weights, activations are already quantised
     w = quantize_tensor(layer.weight.data, num_bits=num_bits)
-    b = quantize_tensor(layer.bias.data, num_bits=num_bits)
+    # Use the same scale and zero point as the weight
+    b = quantize_tensor(layer.bias.data, num_bits=num_bits, max_val=W.max(), min_val=W.min())
+    # b = quantize_tensor(layer.bias.data, num_bits=num_bits)
 
     if weights_save_name:
-        np.save(f'./weights_npy/fp_w_{weights_save_name}', W.cpu().numpy())
-        qt_w = w.scale * (w.tensor - w.zero_point)
-        np.save(f'./weights_npy/quant_w_{weights_save_name}', qt_w.cpu().numpy())
+        if 'conv' in weights_save_name:
+            csv_conv_tensor(tensor=w.tensor, name=f'{weights_save_name}_int8_weight')
+            csv_conv_tensor(tensor=W, name=f'{weights_save_name}_fp_weight')
+        elif 'lin' in weights_save_name:
+            csv_lin_tensor(tensor=w.tensor, name=f'{weights_save_name}_int8_weight')
+            csv_lin_tensor(tensor=W, name=f'{weights_save_name}_fp_weight')
+        csv_bias_tensor(tensor=b.tensor, name=f'{weights_save_name}_int8_bias')
+        csv_bias_tensor(tensor=B, name=f'{weights_save_name}_fp_bias')
+
+        # np.save(f'./weights_npy/fp_w_{weights_save_name}', W.cpu().numpy())
+        # qt_w = w.scale * (w.tensor - w.zero_point)
+        # np.save(f'./weights_npy/quant_w_{weights_save_name}', qt_w.cpu().numpy())
 
     layer.weight.data = w.tensor.float()
     layer.bias.data = b.tensor.float()
@@ -85,6 +97,9 @@ def quantizeLayer(x, layer, stat, scale_x, zp_x, num_bits=8, weights_save_name=N
     zp_w = w.zero_point
     scale_b = b.scale
     zp_b = b.zero_point
+
+    assert scale_w == scale_b, 'Here we use the same scale for weight and zero point'
+    assert zp_w == zp_b, 'Here we use the same zero point for weight and zero point'
 
     scale_next, zero_point_next = calcScaleZeroPoint(min_val=stat['min'], max_val=stat['max'], num_bits=num_bits)
 
@@ -101,7 +116,7 @@ def quantizeLayer(x, layer, stat, scale_x, zp_x, num_bits=8, weights_save_name=N
     layer.weight.data = W
     layer.bias.data = B
 
-    return x, scale_next, zero_point_next
+    return x, scale_next, zero_point_next, (scale_w, zp_w)
 
 
 '''Get Max and Min Stats for Quantising Activations of Network.
@@ -130,14 +145,14 @@ def gatherActivationStats(model, x, stats):
     x = model.conv1(x)
     stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv1_after')
 
-    x = model.act1(model.bn1(x))
+    x = model.act1(x)
     x = model.pool1(x)
 
     stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv2_before')
     x = model.conv2(x)
     stats = updateStats(x.clone().view(x.shape[0], -1), stats, 'conv2_after')
 
-    x = model.act2(model.bn2(x))
+    x = model.act2(x)
     x = model.pool2(x)
 
     x = x.view(x.size(0), -1)
@@ -176,27 +191,37 @@ def gatherStats(model, test_loader):
 
 def quantForward(model, x, stats, quant_num_bits):
     # Quantise before inputting into incoming layers
+    scale_zs_dict = {}
     x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['conv1_before']['min'],
                         max_val=stats['conv1_before']['max'])
-
-    x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv1, stats['conv1_after'],
+    scale_zs_dict['input_scale'] = float(x.scale.data.cpu().detach())
+    scale_zs_dict['input_zero_point'] = int(x.zero_point)
+    x, scale_next, zero_point_next, (scale_layer, zero_point_layer) = quantizeLayer(x.tensor, model.conv1, stats['conv1_after'],
                                                    x.scale, x.zero_point, num_bits=quant_num_bits,
                                                    weights_save_name='conv1')
+    scale_zs_dict['conv1_scale'] = float(scale_layer.data.cpu().detach())
+    scale_zs_dict['conv1_zero_point'] = int(zero_point_layer)
+    scale_zs_dict['after_conv1_scale'] = float(scale_next.data.cpu().detach())
+    scale_zs_dict['after_conv1_zero_point'] = int(zero_point_next)
     # Jeff: Because the input of bn should be FP, we need to convert x to FP
     x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
 
-    x = model.act1(model.bn1(x))
+    x = model.act1(x)
     x = model.pool1(x)
 
     x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['conv2_before']['min'],
                         max_val=stats['conv2_before']['max'])
-    x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.conv2, stats['conv2_after'],
+    x, scale_next, zero_point_next, (scale_layer, zero_point_layer) = quantizeLayer(x.tensor, model.conv2, stats['conv2_after'],
                                                    x.scale, x.zero_point, num_bits=quant_num_bits,
                                                    weights_save_name='conv2')
+    scale_zs_dict['conv2_scale'] = float(scale_layer.data.cpu().detach())
+    scale_zs_dict['conv2_zero_point'] = int(zero_point_layer)
+    scale_zs_dict['after_conv2_scale'] = float(scale_next.data.cpu().detach())
+    scale_zs_dict['after_conv2_zero_point'] = int(zero_point_next)
     # Jeff: Because the input of bn should be FP, we need to convert x to FP
     x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
 
-    x = model.act2(model.bn2((x)))
+    x = model.act2(x)
     x = model.pool2(x)
 
     x = x.view(x.size(0), -1)
@@ -204,15 +229,25 @@ def quantForward(model, x, stats, quant_num_bits):
     x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['lin1_before']['min'],
                         max_val=stats['lin1_before']['max'])
 
-    x, scale_next, zero_point_next = quantizeLayer(x.tensor, model.lin1, stats['lin2_before'],
+    x, scale_next, zero_point_next, (scale_layer, zero_point_layer) = quantizeLayer(x.tensor, model.lin1, stats['lin2_before'],
                                                    x.scale, x.zero_point, num_bits=quant_num_bits,
                                                    weights_save_name='lin1')
+    scale_zs_dict['lin1_scale'] = float(scale_layer.data.cpu().detach())
+    scale_zs_dict['lin1_zero_point'] = int(zero_point_layer)
+    scale_zs_dict['after_lin1_scale'] = float(scale_next.data.cpu().detach())
+    scale_zs_dict['after_lin1_zero_point'] = int(zero_point_next)
 
-    x, scale_next, zero_point_next = quantizeLayer(x, model.lin2, stats['lin2_after'], scale_next, zero_point_next,
+    x, scale_next, zero_point_next, (scale_layer, zero_point_layer) = quantizeLayer(x, model.lin2, stats['lin2_after'], scale_next, zero_point_next,
                                                    num_bits=quant_num_bits, weights_save_name='lin2')
+    scale_zs_dict['lin2_scale'] = float(scale_layer.data.cpu().detach())
+    scale_zs_dict['lin2_zero_point'] = int(zero_point_layer)
+    scale_zs_dict['after_lin2_scale'] = float(scale_next.data.cpu().detach())
+    scale_zs_dict['after_lin2_zero_point'] = int(zero_point_next)
 
     x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
-
+    csv_dict(scale_zs_dict, name='scale_zero_point')
+    pprint.pprint(scale_zs_dict)
+    exit()
     return x
 
 
@@ -339,7 +374,7 @@ def fuse(model: torch.nn.Module) -> torch.nn.Module:
     fx_model.recompile()
     return fx_model
 
-def csv_conv_tensor(tensor, path='', name = ''):
+def csv_conv_tensor(tensor, path='./pruned_weights/', name = ''):
     """
     Function to convert conv tensor data to 2D CSV file
       
@@ -367,10 +402,31 @@ def csv_conv_tensor(tensor, path='', name = ''):
     
     final = np.concatenate(final)
     df = pd.DataFrame(final)
-    df.to_csv(path + f"{name}.csv", index = False)
+    df_transposed = df.T
+    if 'int' in name:
+        df_transposed = df_transposed.astype(int)
+    df_transposed.to_csv(path + f"{name}.csv", index=False, header=False)
 
+def csv_bias_tensor(tensor, path='./pruned_weights/', name = ''):
+    """
+    Function to convert bias tensor data to 2D CSV file
 
-def csv_lin_tensor(tensor, path='', name = ''):
+    Input tensor shape: (out)
+
+    Store CSV: (out)
+
+    """
+    array = (tensor.data.cpu().detach().numpy())
+
+    final = array
+
+    df = pd.DataFrame(final)
+    df_transposed = df.T
+    if 'int' in name:
+        df_transposed = df_transposed.astype(int)
+    df_transposed.to_csv(path + f"{name}.csv", index=False, header=False)
+
+def csv_lin_tensor(tensor, path='./pruned_weights/', name = ''):
     """
     Function to convert conv tensor data to 2D CSV file
       
@@ -392,8 +448,15 @@ def csv_lin_tensor(tensor, path='', name = ''):
 
     df = pd.DataFrame(final)
     
-    df.to_csv(path + f"{name}.csv", index = False)
+    df_transposed = df.T
+    if 'int' in name:
+        df_transposed = df_transposed.astype(int)
+    df_transposed.to_csv(path + f"{name}.csv", index=False, header=False)
 
+def csv_dict(dict, path='./pruned_weights/', name = ''):
+    df = pd.DataFrame.from_dict(dict, orient="index")
+
+    df.to_csv(path + f"{name}.csv", header=False)
 
 ##starting the process
 
@@ -411,7 +474,8 @@ test_data = datasets.FashionMNIST(
 
 batch_size = 64
 test_dataloader = DataLoader(test_data, batch_size=batch_size)
-model_path = 'channel_0.4_filter_0.25_pruned_model.pth'
+# model_path = 'channel_0.4_filter_0.25_pruned_model.pth'
+model_path = 'model_lr_0.05_bs_16_acc91.7.pth'
 q_model = torch.load(model_path).to(device)
 print("Loading model from {}".format(model_path))
 q_model.eval()
@@ -421,22 +485,34 @@ optimizer = torch.optim.SGD(q_model.parameters(), lr=1e-3)
 
 
 fused_model = fuse(q_model)
+delattr(fused_model, "bn1")
+delattr(fused_model, "bn2")
+
 traced_fused_model = torch.fx.symbolic_trace(fused_model)
 print('-------------Fused model-------------')
 print(fused_model.graph)
-testQuant(fused_model, test_dataloader, quant=False)
+
+stats = gatherStats(fused_model, test_dataloader)
+print(stats)
+
+#test on quantized model
+quant_num_bits = 8
+testQuant(fused_model, test_dataloader, quant=True, stats=stats, quant_num_bits=quant_num_bits)
 
 
 conv_list = ['conv1.weight', 'conv2.weight']
 
 lin_list = ['lin1.weight', 'lin2.weight']
 
+bias_list = ['conv1.bias', 'conv2.bias', 'lin1.bias', 'lin2.bias']
 
-path = "/home/tmahmud/Co-Design Tasks/Lab3_renew/Lab-3-Codesign/pruned_weights/"
+path = "./pruned_weights_jf/"
 
-for name, layer in q_model.named_parameters():
+for name, layer in fused_model.named_parameters():
     print(name, layer.shape)
     if name in conv_list:
         csv_conv_tensor(layer, path, name)
     elif name in lin_list:
         csv_lin_tensor(layer, path, name)
+    elif name in bias_list:
+        csv_bias_tensor(layer, path, name)
