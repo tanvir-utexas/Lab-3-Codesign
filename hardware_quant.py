@@ -223,7 +223,7 @@ def quantForward(model, x, stats, quant_num_bits):
     x, scale_next, zero_point_next, _ = quantizeLayer(x, model.lin2, stats['lin2_after'], scale_next, zero_point_next,
                                                    num_bits=quant_num_bits, weights_save_name='lin2')
 
-    x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
+    # x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
     return x
 
 
