@@ -192,35 +192,35 @@ def quantForward(model, x, stats, quant_num_bits):
     x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['conv1_before']['min'],
                         max_val=stats['conv1_before']['max'])
 
-    x, scale_next, zero_point_next, (scale_layer, zero_point_layer) = quantizeLayer(x.tensor, model.conv1, stats['conv1_after'],
+    x, scale_next, zero_point_next, _ = quantizeLayer(x.tensor, model.conv1, stats['conv1_after'],
                                                    x.scale, x.zero_point, num_bits=quant_num_bits, weights_save_name='conv1')
 
-    # Jeff: Because the input of bn should be FP, we need to convert x to FP
-    x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
 
-    x = model.act1(x)
+    # x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
+    x = torch.clamp(x, min=zero_point_next)
+    # x = model.act1(x)
     x = model.pool1(x)
 
-    x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['conv2_before']['min'],
-                        max_val=stats['conv2_before']['max'])
-    x, scale_next, zero_point_next, (scale_layer, zero_point_layer) = quantizeLayer(x.tensor, model.conv2, stats['conv2_after'],
-                                                   x.scale, x.zero_point, num_bits=quant_num_bits, weights_save_name='conv2')
+    # x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['conv2_before']['min'],
+    #                     max_val=stats['conv2_before']['max'])
+    x, scale_next, zero_point_next, _ = quantizeLayer(x, model.conv2, stats['conv2_after'],
+                                                                                    scale_next, zero_point_next, num_bits=quant_num_bits, weights_save_name='conv2')
 
     # Jeff: Because the input of bn should be FP, we need to convert x to FP
-    x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
-
-    x = model.act2(x)
+    # x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
+    x = torch.clamp(x, min=zero_point_next)
+    # x = model.act2(x)
     x = model.pool2(x)
 
     x = x.view(x.size(0), -1)
 
-    x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['lin1_before']['min'],
-                        max_val=stats['lin1_before']['max'])
+    # x = quantize_tensor(x, num_bits=quant_num_bits, min_val=stats['lin1_before']['min'],
+    #                     max_val=stats['lin1_before']['max'])
 
-    x, scale_next, zero_point_next, (scale_layer, zero_point_layer) = quantizeLayer(x.tensor, model.lin1, stats['lin2_before'],
-                                                   x.scale, x.zero_point, num_bits=quant_num_bits, weights_save_name='lin1')
+    x, scale_next, zero_point_next, _ = quantizeLayer(x, model.lin1, stats['lin2_before'],
+                                                                                    scale_next, zero_point_next, num_bits=quant_num_bits, weights_save_name='lin1')
 
-    x, scale_next, zero_point_next, (scale_layer, zero_point_layer) = quantizeLayer(x, model.lin2, stats['lin2_after'], scale_next, zero_point_next,
+    x, scale_next, zero_point_next, _ = quantizeLayer(x, model.lin2, stats['lin2_after'], scale_next, zero_point_next,
                                                    num_bits=quant_num_bits, weights_save_name='lin2')
 
     x = dequantize_tensor(QTensor(tensor=x, scale=scale_next, zero_point=zero_point_next))
