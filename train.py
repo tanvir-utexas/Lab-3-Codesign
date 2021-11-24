@@ -9,7 +9,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor, Lambda, Compose
 import matplotlib.pyplot as plt
-from Network import MyConvNet 
+from Network import MyConvNet, MyConvNet_wo_bias
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print("Using {} device".format(device))
@@ -72,7 +72,7 @@ def train_model(batch_size=64, lr=1e-3):
     train_dataloader = DataLoader(training_data, batch_size=batch_size)
     test_dataloader = DataLoader(test_data, batch_size=batch_size)
 
-    model = MyConvNet().to(device)
+    model = MyConvNet_wo_bias().to(device)
     print(model)
 
     loss_fn = nn.CrossEntropyLoss()
