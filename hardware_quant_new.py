@@ -100,13 +100,13 @@ def quantizeLayer(x, layer, stat, scale_x, zp_x, num_bits=8, weights_save_name=N
 
     # All int computation
     if 'conv' in weights_save_name:
-        x = F.conv2d(x - zp_x, layer.weight.data - zp_w, padding=1).to(torch.int32)
+        x = F.conv2d(x, layer.weight.data - zp_w, padding=1).to(torch.int32)
         x = x >> M
-        x = x + zp_n
+        # x = x + zp_n
     elif 'lin' in weights_save_name:
-        x = F.linear(x - zp_x, layer.weight.data - zp_w).to(torch.int32)
+        x = F.linear(x, layer.weight.data - zp_w).to(torch.int32)
         x = x >> M
-        x = x + zp_n
+        # x = x + zp_n
     # Reset weights for next forward pass
     layer.weight.data = W
     # x = x.float()
@@ -193,7 +193,7 @@ def quantForward(model, x, stats, quant_num_bits):
                                                    x.scale, x.zero_point, num_bits=quant_num_bits, weights_save_name='conv1')
 
 
-    x = torch.clamp(x, min=zero_point_next)
+    x = torch.clamp(x, min=0)
     x = x.float()
     x = model.pool1(x)
     x = x.to(torch.int32)
@@ -201,7 +201,7 @@ def quantForward(model, x, stats, quant_num_bits):
                                                                                     scale_next, zero_point_next, num_bits=quant_num_bits, weights_save_name='conv2')
 
 
-    x = torch.clamp(x, min=zero_point_next)
+    x = torch.clamp(x, min=0)
     x = x.float()
     x = model.pool2(x)
     x = x.to(torch.int32)
