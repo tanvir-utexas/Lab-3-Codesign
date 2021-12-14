@@ -1,14 +1,11 @@
 from __future__ import print_function
-import argparse
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-from torchvision import datasets, transforms
+from torch.optim.lr_scheduler import MultiStepLR
+from torchvision import datasets
 from torch.utils.data import DataLoader
-from torchvision.transforms import ToTensor, Lambda, Compose
-import matplotlib.pyplot as plt
-from Network import MyConvNet 
+from torchvision.transforms import ToTensor
+from nets.Network import MyConvNet
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print("Using {} device".format(device))
@@ -29,8 +26,6 @@ test_data = datasets.FashionMNIST(
     download=True,
     transform=ToTensor(),
 )
-
-batch_size = 64
 
 
 def train(dataloader, model, loss_fn, optimizer, device):
@@ -66,9 +61,9 @@ def test(dataloader, model, loss_fn, device):
     test_loss /= num_batches
     correct /= size
     print(f"Test Error: \n Accuracy: {(100*correct):>0.1f}%, Avg loss: {test_loss:>8f} \n")
+    return 100*correct
 
-
-if __name__ == '__main__':
+def train_model(batch_size=64, lr=1e-3):
     # Create data loaders.
     train_dataloader = DataLoader(training_data, batch_size=batch_size)
     test_dataloader = DataLoader(test_data, batch_size=batch_size)
@@ -77,14 +72,26 @@ if __name__ == '__main__':
     print(model)
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
-
-
-    epochs = 5
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr)
+    epochs = 10
+    scheduler = MultiStepLR(optimizer, milestones=[8], gamma=0.1)
+    accuracy = 0
     for t in range(epochs):
         print(f"Epoch {t+1}\n-------------------------------")
         train(train_dataloader, model, loss_fn, optimizer, device)
-        test(test_dataloader, model, loss_fn, device)
+        accuracy = test(test_dataloader, model, loss_fn, device)
+        scheduler.step()
     print("Done!")
 
-    torch.save(model, "model.pth")
+    torch.save(model, f"model_lr_{lr}_bs_{batch_size}_acc{accuracy:>0.1f}.pth")
+
+if __name__ == '__main__':
+    train_model(batch_size=16, lr=5e-2)
+    # train_model(batch_size=32, lr=5e-2)
+    # train_model(batch_size=64, lr=5e-2)
+    # train_model(batch_size=16, lr=1e-2)
+    # train_model(batch_size=32, lr=1e-2)
+    # train_model(batch_size=64, lr=1e-2)
+    # train_model(batch_size=16, lr=2e-3)
+    # train_model(batch_size=32, lr=2e-3)
+    # train_model(batch_size=64, lr=2e-3)
