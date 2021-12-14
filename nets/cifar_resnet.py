@@ -8,9 +8,9 @@ from utils.quant_dorefa import *
 class PreActBlock_conv_Q(nn.Module):
   '''Pre-activation version of the BasicBlock.'''
 
-  def __init__(self, wbit, abit, in_planes, out_planes, stride=1):
+  def __init__(self, wbit, abit, in_planes, out_planes, stride=1, percentile=1.0):
     super(PreActBlock_conv_Q, self).__init__()
-    Conv2d = conv2d_Q_fn(w_bit=wbit)
+    Conv2d = conv2d_Q_fn(w_bit=wbit, percentile=percentile)
     self.act_q = activation_quantize_fn(a_bit=abit)
 
     self.bn0 = nn.BatchNorm2d(in_planes)
@@ -40,7 +40,7 @@ class PreActBlock_conv_Q(nn.Module):
 
 
 class PreActResNet(nn.Module):
-  def __init__(self, block, num_units, wbit, abit, num_classes):
+  def __init__(self, block, num_units, wbit, abit, num_classes, percentile):
     super(PreActResNet, self).__init__()
     self.conv0 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
 
@@ -51,7 +51,7 @@ class PreActResNet(nn.Module):
               [2] + [1] * (num_units[2] - 1)
     channels = [16] * num_units[0] + [32] * num_units[1] + [64] * num_units[2]
     for stride, channel in zip(strides, channels):
-      self.layers.append(block(wbit, abit, in_planes, channel, stride))
+      self.layers.append(block(wbit, abit, in_planes, channel, stride, percentile))
       in_planes = channel
 
     self.bn = nn.BatchNorm2d(64)
@@ -67,12 +67,12 @@ class PreActResNet(nn.Module):
     return out
 
 
-def resnet20(wbits, abits, num_classes=10):
-  return PreActResNet(PreActBlock_conv_Q, [3, 3, 3], wbits, abits, num_classes=num_classes)
+def resnet20(wbits, abits, percentile, num_classes=10):
+  return PreActResNet(PreActBlock_conv_Q, [3, 3, 3], wbits, abits, num_classes=num_classes, percentile=percentile)
 
 
-def resnet56(wbits, abits, num_classes=10):
-  return PreActResNet(PreActBlock_conv_Q, [9, 9, 9], wbits, abits, num_classes=num_classes)
+def resnet56(wbits, abits, percentile, num_classes=10):
+  return PreActResNet(PreActBlock_conv_Q, [9, 9, 9], wbits, abits, num_classes=num_classes, percentile=percentile)
 
 
 if __name__ == '__main__':

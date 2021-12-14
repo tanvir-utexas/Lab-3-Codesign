@@ -27,10 +27,11 @@ def uniform_quantize(k):
 
 
 class weight_quantize_fn(nn.Module):
-  def __init__(self, w_bit):
+  def __init__(self, w_bit, percentile):
     super(weight_quantize_fn, self).__init__()
     assert w_bit <= 8 or w_bit == 32
     self.w_bit = w_bit
+    self.percentile = percentile
     self.uniform_q = uniform_quantize(k=w_bit)
 
   def forward(self, x):
@@ -42,6 +43,9 @@ class weight_quantize_fn(nn.Module):
     else:
       weight = torch.tanh(x)
       max_w = torch.max(torch.abs(weight)).detach()
+      if self.percentile < 1.0:
+        max_w = self.percentile * max_w
+        weight = torch.clamp(weight, min=-max_w, max=max_w)
       weight = weight / 2 / max_w + 0.5
       weight_q = max_w * (2 * self.uniform_q(weight) - 1)
     return weight_q
@@ -63,14 +67,14 @@ class activation_quantize_fn(nn.Module):
     return activation_q
 
 
-def conv2d_Q_fn(w_bit):
+def conv2d_Q_fn(w_bit, percentile=1.0):
   class Conv2d_Q(nn.Conv2d):
     def __init__(self, in_channels, out_channels, kernel_size, stride=1,
                  padding=0, dilation=1, groups=1, bias=True):
       super(Conv2d_Q, self).__init__(in_channels, out_channels, kernel_size, stride,
                                      padding, dilation, groups, bias)
       self.w_bit = w_bit
-      self.quantize_fn = weight_quantize_fn(w_bit=w_bit)
+      self.quantize_fn = weight_quantize_fn(w_bit=w_bit, percentile=percentile)
 
     def forward(self, input, order=None):
       weight_q = self.quantize_fn(self.weight)
@@ -81,12 +85,12 @@ def conv2d_Q_fn(w_bit):
   return Conv2d_Q
 
 
-def linear_Q_fn(w_bit):
+def linear_Q_fn(w_bit, percentile=1.0):
   class Linear_Q(nn.Linear):
     def __init__(self, in_features, out_features, bias=True):
       super(Linear_Q, self).__init__(in_features, out_features, bias)
       self.w_bit = w_bit
-      self.quantize_fn = weight_quantize_fn(w_bit=w_bit)
+      self.quantize_fn = weight_quantize_fn(w_bit=w_bit, percentile=percentile)
 
     def forward(self, input):
       weight_q = self.quantize_fn(self.weight)

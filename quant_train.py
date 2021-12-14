@@ -29,6 +29,7 @@ parser.add_argument('--cifar', type=int, default=10)
 
 parser.add_argument('--Wbits', type=int, default=1)
 parser.add_argument('--Abits', type=int, default=32)
+parser.add_argument('--percentile', type=float, default=1.0)
 
 parser.add_argument('--lr', type=float, default=0.1)
 parser.add_argument('--wd', type=float, default=1e-4)
@@ -45,6 +46,8 @@ parser.add_argument('--cluster', action='store_true', default=False)
 
 cfg = parser.parse_args()
 cfg.log_name = 'resnet_w{}a{}'.format(cfg.Wbits, cfg.Abits)
+if cfg.percentile < 1.0:
+  cfg.log_name = 'resnet_w{}a{}p{}'.format(cfg.Wbits, cfg.Abits, cfg.percentile)
 cfg.log_dir = os.path.join(cfg.root_dir, 'logs', cfg.log_name)
 cfg.ckpt_dir = os.path.join(cfg.root_dir, 'ckpt', cfg.log_name)
 
@@ -77,7 +80,7 @@ def main():
                                             num_workers=cfg.num_workers)
 
   print('==> Building ResNet..')
-  model = resnet20(wbits=cfg.Wbits, abits=cfg.Abits).cuda()
+  model = resnet20(wbits=cfg.Wbits, abits=cfg.Abits, percentile=cfg.percentile).cuda()
 
   optimizer = torch.optim.SGD(model.parameters(), lr=cfg.lr, momentum=0.9, weight_decay=cfg.wd)
   lr_schedu = optim.lr_scheduler.MultiStepLR(optimizer, [10, 15, 18], gamma=0.1)

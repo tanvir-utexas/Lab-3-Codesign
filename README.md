@@ -15,13 +15,24 @@ tensorboard --logdir=logs
 
 ### Baselines
 
-|   Model   | W-bit | A-bit | Accuracy |
-|:---------:|:-----:|:-----:|:--------:|
-| ResNet 20 |   32  |   32  |   88.3   |
-| ResNet 20 |   4   |   8   |   84.5   |
-| ResNet 20 |   2   |   8   |   83.0   |
-| ResNet 20 |   2   |   4   |   83.2   |
-| ResNet 20 |   1   |   32  |   85.3   |
+|   Model  | W-bit | A-bit | Accuracy |
+|:--------:|:-----:|:-----:|:--------:|
+| ResNet20 |   32  |   32  |   88.3   |
+| ResNet20 |   4   |   8   |   84.5   |
+| ResNet20 |   2   |   8   |   83.0   |
+| ResNet20 |   2   |   4   |   83.2   |
+| ResNet20 |   1   |   32  |   85.3   |
+
+### Apply percentile on weight
+
+|     Model     | Percentile | Accuracy |
+|:-------------:|:----------:|:--------:|
+| ResNet20 W4A8 |     1.0    |   84.5   |
+| ResNet20 W4A8 |    0.99    |   85.2   |
+| ResNet20 W4A8 |    0.98    |   84.3   |
+| ResNet20 W4A8 |    0.97    |   84.8   |
+| ResNet20 W4A8 |    0.96    |   85.0   |
+| ResNet20 W4A8 |    0.95    |   85.0   |
 
 # Original doc: Pytorch implementation of DoReFa-Net
 
